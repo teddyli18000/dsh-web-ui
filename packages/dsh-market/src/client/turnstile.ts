@@ -8,6 +8,25 @@ let frame: HTMLIFrameElement | null = null
 let ready: Promise<HTMLIFrameElement> | null = null
 let chain: Promise<void> = Promise.resolve()
 
+/** Mint a correlation id without requiring secure-context-only randomUUID. */
+export function mintTurnstileRequestId(): string {
+  const cryptoObject = globalThis.crypto
+  const randomUUID = cryptoObject?.randomUUID
+  if (typeof randomUUID === 'function') return randomUUID.call(cryptoObject)
+
+  const bytes = new Uint8Array(16)
+  const getRandomValues = cryptoObject?.getRandomValues
+  if (typeof getRandomValues === 'function') {
+    getRandomValues.call(cryptoObject, bytes)
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256)
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 function challengeFrame(): Promise<HTMLIFrameElement> {
   if (ready !== null) return ready
   ready = new Promise((resolve, reject) => {
@@ -30,7 +49,7 @@ function challengeFrame(): Promise<HTMLIFrameElement> {
 
 async function requestOne(): Promise<string> {
   const iframe = await challengeFrame()
-  const id = crypto.randomUUID()
+  const id = mintTurnstileRequestId()
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => finish(new Error('turnstile-timeout')), TIMEOUT_MS)
     const onMessage = (event: MessageEvent): void => {
