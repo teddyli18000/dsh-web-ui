@@ -44,7 +44,13 @@ import {
 } from '../src/client/MarketCard.tsx'
 import { zh } from '../src/client/locales.ts'
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  Reflect.deleteProperty(navigator, 'clipboard')
+  Reflect.deleteProperty(document, 'execCommand')
+})
 
 const t: MarketCardProps['t'] = (key, params) => {
   const text = (zh as Record<string, string>)[key] ?? key
@@ -204,6 +210,21 @@ describe('MarketCard', () => {
     render(<MarketCard {...cardProps(new FakeScope({}), { remote: REMOTE, gateway: null, pluginManager: null })} />)
     expect(screen.queryByRole('button', { name: /一键安装/ })).toBeNull()
   })
+
+  it('does not report copied when the fallback copy fails', () => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    const execCommand = vi.fn(() => false)
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand })
+    render(<MarketCard {...cardProps(new FakeScope({}), { remote: REMOTE, gateway: null, pluginManager: null })} />)
+
+    fireEvent.click(screen.getByRole('tab', { name: /插件/ }))
+    fireEvent.click(screen.getByRole('button', { name: '复制安装命令' }))
+
+    expect(execCommand).toHaveBeenCalledWith('copy')
+    expect(screen.queryByRole('button', { name: '已复制' })).toBeNull()
+    expect(screen.getByRole('button', { name: '复制安装命令' })).toBeTruthy()
+  })
+
   it('rolls back an optimistic like when Turnstile fails', async () => {
     render(<MarketCard {...cardProps(new FakeScope({}), {
       remote: REMOTE,
